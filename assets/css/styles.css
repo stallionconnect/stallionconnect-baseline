@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #0a0a0a;
+  --foreground: #01337a; /* headings and text use the brand navy */
   --brand: #2563c9;
   --brand-deep: #0f2f63;
   --brand-light: #5790e6;
@@ -10,7 +10,7 @@
   --accent-lime: #c2e029;
   --surface: #f4f4f4;
   --surface-card: #ffffff;
-  --ink: #0a0a0a;
+  --ink: #01337a; /* strong text and dark buttons use the brand navy */
   --ink-soft: #717784;
   --ghost: #d7dae1;
   --hairline: #e6e8ec;
