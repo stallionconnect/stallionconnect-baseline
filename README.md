@@ -17,7 +17,7 @@ Live site: https://stallionconnect.github.io/stallionconnect-baseline/
 
 Styles live in `assets/css/styles.css`, scripts in `assets/js/main.js` and images in `assets/img/`. There is no build step: edit the files and push.
 
-The layout is rem-based and scales with the viewport (designed at 1920px wide). Smooth scrolling uses [Lenis](https://github.com/darkroomengineering/lenis), loaded from jsDelivr through the import map in each page's `<head>`. Photos are free Unsplash images linked from `images.unsplash.com`; swap them for the company's own photos when available.
+The layout is rem-based and scales with the viewport (designed at 1920px wide). Scrolling is the browser's own: Lenis smooth scrolling was removed because it made the pages lag. Photos are free Unsplash images linked from `images.unsplash.com`; swap them for the company's own photos when available.
 
 ## Run locally
 

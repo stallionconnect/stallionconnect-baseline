@@ -28,26 +28,17 @@ function fitRoot() {
 fitRoot();
 addEventListener('resize', fitRoot);
 
-/* ---------- smooth scroll (Lenis), with native fallback ---------- */
-let lenis = null;
-try {
-  const { default: Lenis } = await import('lenis');
-  lenis = new Lenis({ smoothWheel: true });
-} catch (err) {
-  console.warn('Lenis unavailable, using native scroll', err);
-}
-
+/* ---------- scrolling: the browser's own, which stays smooth while the page is busy ---------- */
 let locks = 0;
 function lock() {
-  if (locks++ === 0) { lenis?.stop(); html.classList.add('locked'); }
+  if (locks++ === 0) html.classList.add('locked');
 }
 function unlock() {
-  if (locks > 0 && --locks === 0) { html.classList.remove('locked'); lenis?.start(); }
+  if (locks > 0 && --locks === 0) html.classList.remove('locked');
 }
-// leaves room for the fixed header
+// scroll-padding-top in the CSS leaves room for the fixed header
 function scrollToEl(el) {
-  if (lenis) lenis.scrollTo(el, { offset: -96 });
-  else el.scrollIntoView({ behavior: 'smooth' });
+  el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
 }
 
 /* ---------- springs (tension / friction, integrated in 1ms steps) ---------- */
@@ -57,10 +48,10 @@ function spring(init, [tension, friction], apply) {
   for (const k in init) s.vel[k] = 0;
   s.to = (target, delay = 0) => {
     clearTimeout(s.timer);
-    const go = () => { Object.assign(s.tgt, target); springs.add(s); };
+    const go = () => { Object.assign(s.tgt, target); springs.add(s); kick(); };
     delay > 0 ? (s.timer = setTimeout(go, delay)) : go();
   };
-  apply(s.cur);
+  apply(s.cur, true);
   return s;
 }
 function stepSprings(dt) {
@@ -77,14 +68,34 @@ function stepSprings(dt) {
       if (Math.abs(x - t) < 1e-3 && Math.abs(v) < 1e-2) { x = t; v = 0; } else moving = true;
       s.cur[k] = x; s.vel[k] = v;
     }
-    s.apply(s.cur);
+    s.apply(s.cur, !moving);
     if (!moving) springs.delete(s);
   }
 }
+
+/* ---------- main loop: runs only while a spring is moving or the parallax needs updating ---------- */
+let looping = false, lastFrame = 0, parallaxDirty = false;
+function frame(t) {
+  const dt = lastFrame ? Math.min(0.064, Math.max(0, (t - lastFrame) / 1000)) : 1 / 60;
+  lastFrame = t;
+  if (springs.size) stepSprings(dt);
+  if (parallaxDirty) { parallaxDirty = false; updateParallax(); }
+  if (springs.size) requestAnimationFrame(frame);
+  else { looping = false; lastFrame = 0; }
+}
+function kick() {
+  if (!looping) { looping = true; requestAnimationFrame(frame); }
+}
+
+// 3D (its own GPU layer) only while moving; at rest a 2D transform, or none at all,
+// so revealed elements don't each keep a layer
 function tf(el, extra = '') {
-  return (v) => {
+  return (v, settled = false) => {
     if ('opacity' in v) el.style.opacity = v.opacity;
-    el.style.transform = `translate3d(${v.x || 0}px,${v.y || 0}px,0) scale(${v.scale ?? 1}) rotate(${v.rotate || 0}deg) ${extra}`;
+    const x = v.x || 0, y = v.y || 0, scale = v.scale ?? 1, rotate = v.rotate || 0;
+    if (!settled) el.style.transform = `translate3d(${x}px,${y}px,0) scale(${scale}) rotate(${rotate}deg) ${extra}`;
+    else if (x || y || scale !== 1 || rotate) el.style.transform = `translate(${x}px,${y}px) scale(${scale}) rotate(${rotate}deg) ${extra}`;
+    else el.style.transform = extra || 'none';
   };
 }
 const IDENTITY = { opacity: 1, x: 0, y: 0, scale: 1, rotate: 0 };
@@ -277,27 +288,30 @@ $$('[data-px]').forEach((el) => {
   const [a, b] = el.dataset.px.split(',').map(Number);
   parallax.push({ el, section: el.closest('section'), from: a, to: b, fmt: (v) => `translate3d(${v}%,0,0)` });
 });
-function updateParallax() {
-  const vh = innerHeight;
+// section positions are cached (re-measured on resize and layout changes), so scrolling reads no layout
+function measureParallax() {
   for (const p of parallax) {
     const r = p.section.getBoundingClientRect();
-    if (r.bottom < -50 || r.top > vh + 50) continue;
-    const prog = Math.min(1, Math.max(0, (vh - r.top) / (vh + r.height)));
+    p.top = r.top + scrollY;
+    p.height = r.height;
+  }
+}
+function updateParallax() {
+  const vh = innerHeight, y = scrollY;
+  for (const p of parallax) {
+    const top = p.top - y;
+    if (top + p.height < -50 || top > vh + 50) continue;
+    const prog = Math.min(1, Math.max(0, (vh - top) / (vh + p.height)));
     p.el.style.transform = p.fmt(p.from + (p.to - p.from) * prog);
   }
 }
-
-/* ---------- main loop ---------- */
-let last = performance.now();
-function raf(t) {
-  lenis?.raf(t);
-  const dt = Math.min(0.064, Math.max(0, (t - last) / 1000));
-  last = t;
-  if (springs.size) stepSprings(dt);
-  updateParallax();
-  requestAnimationFrame(raf);
-}
-requestAnimationFrame(raf);
+function requestParallax() { parallaxDirty = true; kick(); }
+function remeasureParallax() { measureParallax(); requestParallax(); }
+addEventListener('scroll', requestParallax, { passive: true });
+addEventListener('resize', remeasureParallax);
+new ResizeObserver(remeasureParallax).observe(document.body);
+measureParallax();
+requestParallax();
 
 /* ---------- same-page anchors ---------- */
 document.addEventListener('click', (e) => {
